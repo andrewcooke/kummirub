@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+from enum import Enum, auto
 from tempfile import TemporaryFile
 from typing import Optional
 
@@ -35,15 +37,63 @@ class Graph:
 
     def to_nx(self):
         with TemporaryFile(mode='wb+') as file:
-            self.write_adjacencies(file)
+            self._write_adjacencies(file)
             file.flush()
             file.seek(0)
             return read_adjlist(file)
 
-    def write_adjacencies(self, file):
+    def _write_adjacencies(self, file):
         for key, adjacencies in self.__adjacencies.items():
             file.write(str(key).encode('utf'))
             for adjacency in adjacencies:
                 file.write(' '.encode('utf'))
                 file.write(str(adjacency).encode('utf'))
             file.write('\n'.encode('utf'))
+
+    def __iter__(self):
+        """iterate over all tiles"""
+        yield from self.__adjacencies
+
+
+class PatchType(Enum):
+
+    RUN = auto()
+    NUMBER = auto()
+
+
+class Patchwork:
+
+    def __init__(self):
+        self.__tiles_to_patches = {}
+        self.__patch_to_tiles = defaultdict(set)
+
+    def new_patch(self, tile):
+        self.add_tile(len(self.__patch_to_tiles), tile)
+        return self.__tiles_to_patches[tile]
+
+    def add_tile(self, color, tile):
+        self.__tiles_to_patches[tile] = color
+        self.__patch_to_tiles[color].add(tile)
+
+    def is_patched(self, tile):
+        return tile in self.__tiles_to_patches
+
+    def patch_type(self, tile):
+        patch = list(self.__tiles_to_patches[tile])
+        if len(patch) < 2:
+            raise Exception('ambiguous patch (too small)')
+        if patch[0].color == patch[1].color:
+            return PatchType.RUN
+        else:
+            return PatchType.NUMBER
+
+
+class Patcher:
+
+    def __init__(self, graph: Graph, patchwork: Patchwork):
+        self.__graph = graph
+        self.__original_patchwork = patchwork
+
+    def new_patchwork(self):
+        for tile in filter(lambda tile: not self.__original_patchwork.is_patched(tile), self.__graph):
+            print(f'uncolored: {tile}')
