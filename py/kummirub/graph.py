@@ -8,7 +8,7 @@ from typing import Optional
 
 from networkx import read_adjlist
 
-from kummirub.tiles import Tile
+from kummirub.tiles import Tile, JOKER
 
 
 class Graph:
@@ -34,6 +34,9 @@ class Graph:
             tile, bag = bag.draw()
             graph.__add(tile)
         return graph, bag
+
+    def neighbouring_tiles(self, tile):
+        yield from self.__adjacencies[tile]
 
     def to_nx(self):
         with TemporaryFile(mode='wb+') as file:
@@ -63,29 +66,57 @@ class PatchType(Enum):
 
 class Patchwork:
 
-    def __init__(self):
-        self.__tiles_to_patches = {}
-        self.__patch_to_tiles = defaultdict(set)
-
-    def new_patch(self, tile):
-        self.add_tile(len(self.__patch_to_tiles), tile)
-        return self.__tiles_to_patches[tile]
-
-    def add_tile(self, color, tile):
-        self.__tiles_to_patches[tile] = color
-        self.__patch_to_tiles[color].add(tile)
+    def __init__(self, previous: Optional[Patchwork] = None):
+        self.__tiles_to_patches = dict(previous.__tiles_to_patches if previous else {})
+        self.__patch_to_tiles = defaultdict(set, previous.__patch_to_tiles if previous else {})
 
     def is_patched(self, tile):
         return tile in self.__tiles_to_patches
 
+    def patch(self, tile):
+        return self.__tiles_to_patches[tile]
+
     def patch_type(self, tile):
-        patch = list(self.__tiles_to_patches[tile])
-        if len(patch) < 2:
-            raise Exception('ambiguous patch (too small)')
-        if patch[0].color == patch[1].color:
-            return PatchType.RUN
-        else:
-            return PatchType.NUMBER
+        patch = self.patch(tile)
+        non_jokers = [tile for tile in patch if tile.value != JOKER]
+        if len(non_jokers) < 2 or non_jokers[0].color == non_jokers[1].color:
+            yield PatchType.RUN, non_jokers
+        if len(non_jokers) < 2 or non_jokers[0].color != non_jokers[1].color:
+            yield PatchType.NUMBER, patch, non_jokers
+
+    def part_of_complete_patch(self, tile):
+        return len(self.patch(tile)) > 2
+
+    def neighbouring_patches(self, graph, tile):
+        known_patches = set()
+        for neighbouring_tile in graph.neighbouring_tiles(tile):
+            patch = self.patch(neighbouring_tile)
+            if patch not in known_patches:
+                known_patches.add(patch)
+                yield patch
+
+    def add_singleton(self, tile):
+        patchwork = Patchwork(self)
+        color = len(patchwork.__patch_to_tiles)
+        patchwork.__tiles_to_patches[tile] = color
+        patchwork.__patch_to_tiles[color].add(tile)
+        return patchwork
+
+    def append(self, graph, tile):
+        for patch in self.neighbouring_patches(graph, tile):
+            for patch_type, patch, non_jokers in self.patch_type(patch):
+                match patch_type:
+                    case PatchType.NUMBER:
+                        if len(patch) < 4 and (len(non_jokers) == 0 or non_jokers[0].value == tile.value) \
+                                and all(non_joker.color != tile.color for non_joker in non_jokers):
+                            yield self.add_number(patch, tile)
+                    case PatchType.RUN:
+                        values = sorted(nj.value for nj in non_jokers)
+                        n_jokers = len(patch) - len(non_jokers)
+                        n_free_jokers = n_jokers - ((values[-1] - values[0] + 1) - len(non_jokers))
+                        if n_free_jokers == 0
+
+
 
 
 class Patcher:
