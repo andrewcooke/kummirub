@@ -59,9 +59,12 @@ class Tile(NamedTuple):
                 for number in range(1, MAX_NUMBER + 1):
                     yield Tile(color, number, generation)
 
-    def possible_run(self, tile):
+    def possible_before(self, tile):
         return self.value == JOKER or tile.value == JOKER or \
-               (tile.color == self.color and abs(tile.value - self.value) == 1)
+               (tile.color == self.color and tile.value == self.value - 1)
+    def possible_after(self, tile):
+        return self.value == JOKER or tile.value == JOKER or \
+               (tile.color == self.color and tile.value == self.value + 1)
 
     def possible_block(self, tile):
         return self.value == JOKER or tile.value == JOKER or \
